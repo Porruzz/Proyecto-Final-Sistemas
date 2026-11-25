@@ -1,0 +1,345 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>ComplexNet — Hardware Real (ESP-WROOM-32)</title>
+  <style>
+    body{background:#101827;color:#e5edf5;font:15px system-ui,sans-serif;margin:24px}
+    main{max-width:1120px;margin:auto}
+    h1{margin-bottom:4px}
+    .sub{color:#94acc4;margin-top:0}
+    section{background:#1b293a;padding:18px 20px;border-radius:12px;margin:16px 0;border:1px solid #2a3d55}
+    button,input,select,textarea{padding:8px 10px;margin:4px;border-radius:6px;border:1px solid #54708a;background:#101827;color:#e5edf5;font-size:14px}
+    button{background:#187b70;color:#fff;cursor:pointer;border-color:#26a69a}
+    button:hover{background:#1f9688}
+    button.warn{background:#b45309;border-color:#d97706}
+    button.sec{background:#334155;border-color:#64748b}
+    .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+    #nodes{display:flex;gap:14px;flex-wrap:wrap;margin-top:12px}
+    .node{border:1px solid #54d9bc;padding:14px;border-radius:10px;min-width:230px;background:#132030}
+    .node.off{border-color:#e87979;opacity:.75}
+    .node.local{border-color:#38bdf8}
+    .badge{display:inline-block;padding:2px 8px;border-radius:99px;font-size:12px;font-weight:600;margin-left:6px}
+    .ok{background:#065f46;color:#a7f3d0}
+    .down{background:#7f1d1d;color:#fecaca}
+    .usb{background:#075985;color:#bae6fd}
+    .banner{padding:12px;border-radius:8px;background:#3b2710;border:1px solid #f59e0b;color:#fde68a;margin-top:10px;display:none}
+    .banner.done{background:#064e3b;border-color:#10b981;color:#d1fae5}
+    pre{white-space:pre-wrap;max-height:260px;overflow:auto;background:#0d1420;padding:12px;border-radius:8px;font-size:13px}
+    canvas{max-width:100%;image-rendering:pixelated;border:1px solid #334155;border-radius:6px}
+    .muted{color:#94acc4;font-size:13px}
+  </style>
+</head>
+<body>
+<main>
+  <h1>ComplexNet — Modo Hardware Real (ESP-WROOM-32)</h1>
+  <p class="sub">1 ESP32 conectado por USB (gateway) + 2.º ESP32 inalámbrico por radio ESP-NOW (canal 1, sin router)</p>
+
+  <section>
+    <h2>1. Conexión USB al ESP32 #1</h2>
+    <div class="row">
+      <select id="port"></select>
+      <button class="sec" onclick="loadPorts()">Actualizar puertos</button>
+      <button onclick="connectSelected()">Conectar</button>
+      <button onclick="connectAuto()">Auto-detectar ESP32</button>
+      <button class="sec" onclick="disconnect()">Desconectar</button>
+      <span id="connStatus" class="muted">Desconectado</span>
+    </div>
+  </section>
+
+  <section>
+    <h2>2. Red física ESP-NOW y monitoreo en vivo</h2>
+    <div class="row">
+      Estrategia:
+      <select id="strategy">
+        <option value="0">0 · Fitness F(i,j)</option>
+        <option value="1">1 · Menor carga</option>
+        <option value="2">2 · Round Robin</option>
+        <option value="3">3 · Aleatoria</option>
+      </select>
+      <button onclick="act('strategy',{strategy:+$('strategy').value})">Aplicar</button>
+      Pérdida artificial %:
+      <input id="drop" type="number" min="0" max="50" value="0" style="width:64px">
+      <button onclick="act('drop',{pct:+$('drop').value})">Fijar</button>
+      <button class="sec" onclick="act('reset')">Reiniciar núcleo</button>
+    </div>
+    <div class="row" style="margin-top:6px">
+      Recursos locales (SETRES):
+      C <input id="resC" type="number" step="0.05" min="0" max="1" value="0.20" style="width:72px">
+      M <input id="resM" type="number" step="0.05" min="0" max="1" value="0.20" style="width:72px">
+      <button onclick="act('setres',{c:+$('resC').value,m:+$('resM').value})">Forzar C/M local (enviar al ESP32 #2)</button>
+      <button class="sec" onclick="act('setres',{auto:true})">Volver a medición real (AUTO)</button>
+    </div>
+    <p id="summary" class="muted">Conecta el ESP32 #1 para ver el estado en tiempo real.</p>
+    <div id="nodes"></div>
+    <svg id="graph" viewBox="0 0 560 190" width="560" style="margin-top:10px"></svg>
+  </section>
+
+  <section>
+    <h2>3. Tareas y prueba de tolerancia a fallos (2 ESP32)</h2>
+    <div class="row">
+      Duración espera (s):
+      <input id="durSec" type="number" min="0.5" max="20" step="0.5" value="2" style="width:72px">
+      <button onclick="act('sleep',{duration_ds:Math.round(+$('durSec').value*10)})">Ejecutar Espera (kind 1)</button>
+      <button onclick="act('echo')">Ejecutar Echo (kind 2)</button>
+      <button class="warn" onclick="startFailure()">Prueba guiada de caída del ESP32 #2 (10 s)</button>
+    </div>
+    <div id="failBanner" class="banner"></div>
+    <pre id="output">Resultados aparecerán aquí...</pre>
+  </section>
+
+  <section>
+    <h2>4. Procesamiento distribuido de imágenes (kind 3 · RGB → gris)</h2>
+    <div class="row">
+      <input type="file" id="file" accept="image/*">
+      <button onclick="processImage()">Procesar en los ESP32</button>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <canvas id="original"></canvas>
+      <canvas id="gray"></canvas>
+    </div>
+  </section>
+
+  <section>
+    <h2>5. IA: regresión lineal distribuida (kind 4)</h2>
+    <textarea id="points" rows="4" cols="60"></textarea><br>
+    <button onclick="runAI()">Entrenar en los ESP32</button><br>
+    <canvas id="plot" width="540" height="220" style="margin-top:8px"></canvas>
+  </section>
+
+  <section>
+    <h2>6. Eventos del núcleo C (en tiempo real)</h2>
+    <pre id="events">Sin eventos todavía.</pre>
+  </section>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+$('points').value = Array.from({length: 60}, (_, i) => `${i},${2*i+3}`).join('\n');
+
+let isConnected = false;
+
+async function post(action, extra = {}) {
+  const r = await fetch('/api', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({action, ...extra})
+  });
+  const d = await r.json();
+  if (d.error) throw new Error(d.error);
+  return d;
+}
+
+async function loadPorts() {
+  const d = await (await fetch('/ports')).json();
+  const sel = $('port');
+  sel.innerHTML = d.ports.length
+    ? d.ports.map(p => `<option value="${p.port}">${p.port} — ${p.desc}</option>`).join('')
+    : '<option value="">(Sin puertos COM detectados)</option>';
+  if (d.port) sel.value = d.port;
+}
+
+async function connectSelected() {
+  try {
+    const port = $('port').value;
+    if (!port) throw new Error('Selecciona un puerto COM o conecta el ESP32.');
+    const r = await post('connect', {port});
+    isConnected = true;
+    $('connStatus').textContent = `Conectado en ${r.port} · MAC ${r.mac}`;
+    await refresh();
+  } catch (e) { alert(e.message); }
+}
+
+async function connectAuto() {
+  try {
+    const r = await post('connect', {});
+    isConnected = true;
+    $('connStatus').textContent = `Conectado en ${r.port} · MAC ${r.mac}`;
+    await loadPorts();
+    await refresh();
+  } catch (e) { alert(e.message); }
+}
+
+async function disconnect() {
+  await post('disconnect');
+  isConnected = false;
+  $('connStatus').textContent = 'Desconectado';
+  $('summary').textContent = 'Desconectado.';
+  $('nodes').innerHTML = '';
+}
+
+async function act(a, extra = {}) {
+  try {
+    $('output').textContent = 'Ejecutando en hardware real...';
+    const r = await post(a, extra);
+    $('output').textContent = JSON.stringify(r, null, 2);
+    await refresh();
+  } catch (e) {
+    $('output').textContent = 'Error: ' + e.message;
+  }
+}
+
+async function startFailure() {
+  try {
+    const r = await post('failure_start', {duration_ds: 100});
+    const b = $('failBanner');
+    b.className = 'banner';
+    b.style.display = 'block';
+    b.textContent = r.instruction;
+    $('output').textContent = JSON.stringify(r, null, 2);
+  } catch (e) {
+    alert(e.message);
+  }
+}
+
+async function processImage() {
+  try {
+    const f = $('file').files[0];
+    if (!f) throw new Error('Selecciona una imagen primero');
+    const im = await createImageBitmap(f);
+    const w = 32;
+    const h = Math.min(32, Math.max(1, Math.round(32 * im.height / im.width)));
+    const a = $('original'), b = $('gray');
+    a.width = b.width = w; a.height = b.height = h;
+    const ctx = a.getContext('2d');
+    ctx.drawImage(im, 0, 0, w, h);
+    const rgba = ctx.getImageData(0, 0, w, h);
+    const rgb = [];
+    for (let i = 0; i < rgba.data.length; i += 4) rgb.push(rgba.data[i], rgba.data[i+1], rgba.data[i+2]);
+    $('output').textContent = `Enviando ${Math.ceil(rgb.length/159)} fragmentos a los ESP32 por ESP-NOW...`;
+    const r = await post('image', {rgb: btoa(String.fromCharCode(...rgb))});
+    const g = atob(r.gray);
+    for (let i = 0; i < g.length; i++) rgba.data.fill(g.charCodeAt(i), i*4, i*4+3);
+    b.getContext('2d').putImageData(rgba, 0, 0);
+    $('output').textContent = JSON.stringify({
+      fragments: r.fragments,
+      total_ms: r.total_ms,
+      avg_fragment_ms: r.avg_fragment_ms,
+      workers: r.workers
+    }, null, 2);
+    await refresh();
+  } catch (e) { alert(e.message); }
+}
+
+async function runAI() {
+  try {
+    const points = $('points').value.trim().split('\n').map(l => l.split(',').map(Number));
+    $('output').textContent = 'Entrenando regresión distribuida en los ESP32...';
+    const r = await post('ai', {points});
+    $('output').textContent = JSON.stringify(r, null, 2);
+    const c = $('plot').getContext('2d');
+    c.clearRect(0, 0, 540, 220);
+    const xs = points.map(p => p[0]), ys = points.map(p => p[1]);
+    const lo = Math.min(...xs), hi = Math.max(...xs), yl = Math.min(...ys), yh = Math.max(...ys);
+    const X = x => 24 + 492 * (x - lo) / (hi - lo || 1);
+    const Y = y => 200 - 180 * (y - yl) / (yh - yl || 1);
+    c.fillStyle = '#54d9bc';
+    for (const [x, y] of points) { c.beginPath(); c.arc(X(x), Y(y), 3, 0, 7); c.fill(); }
+    c.strokeStyle = '#f4a261'; c.lineWidth = 2;
+    c.beginPath(); c.moveTo(X(lo), Y(r.slope * lo + r.intercept)); c.lineTo(X(hi), Y(r.slope * hi + r.intercept)); c.stroke();
+    await refresh();
+  } catch (e) { alert(e.message); }
+}
+
+function renderGraph(d) {
+  const nodes = [{label: 'ESP32 #1 (USB)', mac: d.mac.slice(-5), active: true, rssi: null}];
+  for (let i = 0; i < d.neighbors.length; i++) {
+    const nb = d.neighbors[i];
+    nodes.push({label: `ESP32 #${i+2}`, mac: nb.mac.slice(-5), active: nb.active, rssi: nb.rssi});
+  }
+  const cx = 280, cy = 95, rx = 180, ry = 60;
+  const pts = nodes.map((_, i) => {
+    if (nodes.length === 1) return [cx, cy];
+    if (nodes.length === 2) return [i === 0 ? 150 : 410, cy];
+    const ang = i * 2 * Math.PI / nodes.length;
+    return [cx + rx * Math.cos(ang), cy + ry * Math.sin(ang)];
+  });
+  let svg = '';
+  for (let i = 1; i < nodes.length; i++) {
+    const [x1, y1] = pts[0], [x2, y2] = pts[i];
+    const col = nodes[i].active ? '#43d9ad' : '#993b47';
+    svg += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${col}" stroke-width="2.5" stroke-dasharray="${nodes[i].active ? '' : '6,6'}"/>`;
+    const mx = (x1 + x2) / 2, my = (y1 + y2) / 2 - 8;
+    svg += `<text x="${mx}" y="${my}" fill="${col}" font-size="12" text-anchor="middle">${nodes[i].active ? nodes[i].rssi.toFixed(0)+' dBm (ESP-NOW)' : 'CAÍDO'}</text>`;
+  }
+  pts.forEach(([x, y], i) => {
+    const fill = i === 0 ? '#0284c7' : (nodes[i].active ? '#187b70' : '#993b47');
+    svg += `<circle cx="${x}" cy="${y}" r="28" fill="${fill}"/>`;
+    svg += `<text x="${x}" y="${y-2}" fill="#fff" font-size="11" font-weight="600" text-anchor="middle">${nodes[i].label}</text>`;
+    svg += `<text x="${x}" y="${y+13}" fill="#dbeafe" font-size="10" text-anchor="middle">${nodes[i].mac}</text>`;
+  });
+  $('graph').innerHTML = svg;
+}
+
+async function refresh() {
+  if (!isConnected) return;
+  try {
+    const d = await (await fetch('/state')).json();
+    if (!d.connected) { isConnected = false; return; }
+    if (d.error) return;
+
+    const activeNb = d.neighbors.filter(n => n.active).length;
+    $('summary').textContent =
+      `Uptime: ${(d.time/1000).toFixed(1)} s | Canal ESP-NOW: ${d.channel} | ` +
+      `Nodos activos: ${1 + activeNb}/${1 + d.neighbors.length} | ` +
+      `TX/RX: ${d.stats.frames_tx}/${d.stats.frames_rx} | ` +
+      `Radio OK/Fail: ${d.stats.radio_tx_ok}/${d.stats.radio_tx_fail} | Lamport: ${d.lamport}`;
+
+    let html = `
+      <div class="node local">
+        <b>ESP32 #1</b><span class="badge usb">USB Gateway</span>
+        <p class="muted" style="margin:4px 0">${d.mac}</p>
+        <p style="margin:6px 0">
+          CPU libre: <b>${(100*d.cpu_free).toFixed(1)}%</b> ${d.override_res ? '(SETRES)' : '(real)'}<br>
+          RAM libre: <b>${(100*d.memory_free).toFixed(1)}%</b> (${(d.heap_free/1024).toFixed(0)}/${(d.heap_total/1024).toFixed(0)} KB)<br>
+          Carga L: ${(100*d.load).toFixed(0)}% · Fitness: <b>${d.fitness.toFixed(3)}</b><br>
+          Tareas OK: ${d.stats.tasks_done} · Reasignadas: ${d.stats.reassignments}
+        </p>
+      </div>`;
+
+    d.neighbors.forEach((nb, idx) => {
+      html += `
+        <div class="node ${nb.active ? '' : 'off'}">
+          <b>ESP32 #${idx+2}</b><span class="badge ${nb.active ? 'ok' : 'down'}">${nb.active ? 'Activo (ESP-NOW)' : 'Caído'}</span>
+          <p class="muted" style="margin:4px 0">${nb.mac}</p>
+          <p style="margin:6px 0">
+            CPU libre: <b>${(100*nb.cpu_free).toFixed(1)}%</b><br>
+            RAM libre: <b>${(100*nb.memory_free).toFixed(1)}%</b><br>
+            RSSI: <b>${nb.rssi.toFixed(1)} dBm</b> (B=${nb.link_quality.toFixed(2)})<br>
+            Reputación R: ${nb.reputation.toFixed(2)} · Fitness: <b>${nb.fitness.toFixed(3)}</b><br>
+            OK/Fallo: ${nb.done}/${nb.failed} · Visto hace ${(nb.age_ms/1000).toFixed(1)} s
+          </p>
+        </div>`;
+    });
+    $('nodes').innerHTML = html;
+    renderGraph(d);
+
+    if (d.failure_job) {
+      const b = $('failBanner');
+      b.style.display = 'block';
+      if (d.failure_job.done) {
+        b.className = 'banner done';
+        const r = d.failure_job.result;
+        b.textContent = `¡Recuperación completada! Tarea #${r.id} finalizó con status=${r.status} en ${r.executor} (${r.local ? 'reasignada al ESP32 #1 local' : 'ejecutada en ESP32 #2'}) en ${r.latency_ms} ms.`;
+        $('output').textContent = JSON.stringify(r, null, 2);
+      } else {
+        b.className = 'banner';
+        b.textContent = d.failure_job.instruction;
+      }
+    }
+
+    $('events').textContent = d.events.length
+      ? d.events.slice().reverse().map(e =>
+          `${(e.t/1000).toFixed(2)} s | LC ${e.lc} | ${e.event}${e.peer ? ' | peer '+e.peer : ''}${e.task ? ' | tarea #'+e.task : ''}`
+        ).join('\n')
+      : 'Sin eventos todavía.';
+  } catch (e) {
+    // Reintentar en el próximo ciclo
+  }
+}
+
+loadPorts();
+setInterval(refresh, 1500);
+</script>
+</body>
+</html>

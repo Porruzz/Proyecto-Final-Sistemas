@@ -1,0 +1,21 @@
+# Entornos virtuales y caché Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Compilaciones temporales en host / Arduino
+tests/host/build/
+*.o
+*.exe
+*.so
+
+# Sistema operativo y editores
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Mantener la librería precompilada de Windows del simulador
+!simulator/complexnet.dll

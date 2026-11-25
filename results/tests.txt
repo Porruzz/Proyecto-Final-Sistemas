@@ -1,0 +1,93 @@
+make: Entering directory '/mnt/data/complexnet-simulador/tests/host'
+mkdir -p build
+gcc -std=c11 -g -O1 -Wall -Wextra -Wpedantic -Werror -I../../firmware/components/complexnet/core test_proto.c ../../firmware/components/complexnet/core/cn_core.c ../../firmware/components/complexnet/core/cn_proto.c ../../firmware/components/complexnet/core/cn_scheduler.c -lm -o build/test_proto
+gcc -std=c11 -g -O1 -Wall -Wextra -Wpedantic -Werror -I../../firmware/components/complexnet/core test_core.c sim_net.c ../../firmware/components/complexnet/core/cn_core.c ../../firmware/components/complexnet/core/cn_proto.c ../../firmware/components/complexnet/core/cn_scheduler.c -lm -o build/test_core
+gcc -std=c11 -g -O1 -Wall -Wextra -Wpedantic -Werror -I../../firmware/components/complexnet/core test_integration.c sim_net.c ../../firmware/components/complexnet/core/cn_core.c ../../firmware/components/complexnet/core/cn_proto.c ../../firmware/components/complexnet/core/cn_scheduler.c -lm -o build/test_integration
+./build/test_proto
+test_proto
+  [ OK  ] test_encode_layout
+  [ OK  ] test_roundtrip
+  [ OK  ] test_empty_payload
+  [ OK  ] test_encode_rejects
+  [ OK  ] test_decode_rejects
+  [ OK  ] test_q8
+  [ OK  ] test_event_names
+  [ OK  ] test_fitness_document_example
+  [ OK  ] test_fitness_load_penalty
+  [ OK  ] test_select_picks_max
+  [ OK  ] test_select_memory_weighs_more
+  [ OK  ] test_select_filters
+  [ OK  ] test_select_exclude
+  [ OK  ] test_select_tie_break
+
+14 pruebas, 0 fallidas, 54 verificaciones, 0 fallos
+./build/test_core
+test_core
+  [ OK  ] test_init_validates_args
+  [ OK  ] test_discovery
+  [ OK  ] test_registry_content
+  [ OK  ] test_heartbeat_rate
+  [ OK  ] test_failure_detection
+  [ OK  ] test_local_execution_when_isolated
+  [ OK  ] test_selects_best_remote
+  [ OK  ] test_requirements_filter
+  [ OK  ] test_executor_admission_rejects
+  [ OK  ] test_executor_checks_requirements
+  [ OK  ] test_unsupported_kind_gives_up
+  [ OK  ] test_duplicate_frames_are_idempotent
+  [ OK  ] test_lamport_causality
+  [ OK  ] test_busy_network_returns_no_node
+  [ OK  ] test_task_table_full
+  [ OK  ] test_garbage_frames_are_ignored
+
+16 pruebas, 0 fallidas, 82 verificaciones, 0 fallos
+mkdir -p ../../results
+./build/test_integration ../../results/metrics.json
+test_integration
+    metrica lifecycle_tasks_done               = 6.00
+    metrica lifecycle_exec_node1               = 1.00
+    metrica lifecycle_exec_node2               = 5.00
+  [ OK  ] test_full_lifecycle
+    metrica failure_runs                       = 20.00
+    metrica failure_detect_ms_min              = 4090.00
+    metrica failure_detect_ms_mean             = 5040.00
+    metrica failure_detect_ms_max              = 5990.00
+    metrica failure_reassign_ms_min            = 4090.00
+    metrica failure_reassign_ms_mean           = 5040.00
+    metrica failure_reassign_ms_max            = 5990.00
+    metrica failure_complete_ms_mean           = 15060.00
+  [ OK  ] test_executor_failure_reassignment
+    metrica ack_timeout_reassign_ms            = 1500.00
+  [ OK  ] test_failure_before_ack
+  [ OK  ] test_task_timeout_without_node_failure
+    metrica loss0_success_pct                  = 100.00
+    metrica loss0_submitted                    = 100.00
+    metrica loss0_executions_per_task          = 1.00
+    metrica loss10_success_pct                 = 100.00
+    metrica loss10_submitted                   = 100.00
+    metrica loss10_executions_per_task         = 1.05
+    metrica loss20_success_pct                 = 100.00
+    metrica loss20_submitted                   = 100.00
+    metrica loss20_executions_per_task         = 1.07
+    metrica loss30_success_pct                 = 100.00
+    metrica loss30_submitted                   = 100.00
+    metrica loss30_executions_per_task         = 1.09
+  [ OK  ] test_packet_loss_sweep
+    metrica contention_tasks_done_of_4         = 4.00
+    metrica contention_rejections              = 4.00
+    metrica contention_max_concurrency         = 2.00
+  [ OK  ] test_concurrent_schedulers
+    metrica overload_submitted_of_8            = 8.00
+    metrica overload_done                      = 6.00
+    metrica overload_gave_up                   = 2.00
+  [ OK  ] test_overload_degrades_gracefully
+    metrica rejoin_ms                          = 310.00
+  [ OK  ] test_node_rejoin
+    metrica spof_combinations_ok_of_6          = 6.00
+  [ OK  ] test_no_single_point_of_failure
+  [ OK  ] test_three_failures_cascade
+    metrica sizeof_cn_core_t_bytes             = 2912.00
+  [ OK  ] test_memory_footprint
+
+11 pruebas, 0 fallidas, 247 verificaciones, 0 fallos
+make: Leaving directory '/mnt/data/complexnet-simulador/tests/host'
